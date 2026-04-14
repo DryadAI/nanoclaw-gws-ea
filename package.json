@@ -21,13 +21,15 @@
     "auth:workspace": "tsx src/workspace-auth.ts",
     "auth:browser": "tsx src/workspace-auth.ts --browser",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ollama-proxy": "OLLAMA_URL=http://100.72.190.41:11434 OLLAMA_MODEL=qwen3:14b npx tsx scripts/ollama-proxy.ts"
   },
   "dependencies": {
     "@onecli-sh/sdk": "^0.2.0",
     "better-sqlite3": "11.10.0",
     "cron-parser": "5.5.0",
-    "googleapis": "^171.4.0"
+    "googleapis": "^171.4.0",
+    "grammy": "^1.39.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
