@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # NanoClaw
 
 Personal Claude assistant. See [README.md](README.md) for philosophy and setup. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for architecture decisions.
@@ -56,9 +60,15 @@ Before creating a PR, adding a skill, or preparing any contribution, you MUST re
 Run commands directly—don't tell the user to run them.
 
 ```bash
-npm run dev          # Run with hot reload
-npm run build        # Compile TypeScript
-./container/build.sh # Rebuild agent container
+npm run dev          # Run with hot reload (tsx, no compile step)
+npm run build        # Compile TypeScript to dist/
+npm run typecheck    # Type-check without emitting
+npm run lint         # ESLint only
+npm run check        # ESLint + typecheck + prettier (pre-PR)
+npm test             # Run all tests (vitest)
+npx vitest run src/channels/telegram.test.ts  # Single test file
+npx vitest run --reporter=verbose  # Verbose test output
+./container/build.sh # Rebuild agent container image
 ```
 
 Service management:
@@ -78,6 +88,22 @@ systemctl --user restart nanoclaw
 
 **WhatsApp not connecting after upgrade:** WhatsApp is now a separate skill, not bundled in core. Run `/add-whatsapp` (or `npx tsx scripts/apply-skill.ts .claude/skills/add-whatsapp && npm run build`) to install it. Existing auth credentials and groups are preserved.
 
+**Agent returns `Unable to connect to API (ECONNREFUSED|ECONNRESET)` or `selected model … may not exist`:** See *Bifrost proxy* and *Linux/Docker connectivity gotchas* under GWS-EA Additions. Common causes (in order to check): tailscale subnet route hijack, OneCLI ports bound to `127.0.0.1` only, proxy 404'ing absolute-form URIs from OneCLI, bifrost model rejecting Claude Code's payload (swap `BIFROST_MODEL`).
+
+## Message Flow
+
+Inbound: Channel → `storeMessage()` (SQLite) → `index.ts` poll loop detects new messages → checks trigger pattern → queues to `group-queue.ts` → `runContainerAgent()` spawns Docker container with group folder mounted → agent writes IPC files to `data/ipc/` → `ipc.ts` watcher picks up results → `router.ts` sends reply via originating channel.
+
+Key invariants:
+- One container per group at a time (queue serializes). `isMain=true` groups bypass trigger requirement.
+- Session IDs persist across messages in a conversation window (`IDLE_TIMEOUT` = 30min default).
+- `ContainerConfig` in `RegisteredGroup` controls per-group MCP servers, tool restrictions, and extra mounts.
+- `mcpConfig` keys: `calendar`, `workspace`, `1password`, `spiral`, `blog`. `nanoclaw` and `time` always start.
+- Mount security: allowlist at `~/.config/nanoclaw/mount-allowlist.json` — never mounted into containers.
+- Sender allowlist at `~/.config/nanoclaw/sender-allowlist.json` — controls who can message the bot.
+
+IPC: agent writes JSON files to `data/ipc/{group}/` — actions like `send_message`, `register_group`, `create_matter`, `create_task`. `ipc.ts` polls every 1s and dispatches.
+
 ## GWS-EA Additions
 
 | File | Purpose |
@@ -90,6 +116,27 @@ systemctl --user restart nanoclaw
 Groups: `main/` (GChat DM), `email-principal/`, `email-external/`, `heartbeat/`, `global/` (shared procedures).
 
 Fork sync: `/update-nanoclaw` pulls from `qwibitai/nanoclaw` → gws-ea. Users run `/update-ea` to pull from gws-ea → their fork. Core files modified by this fork (`config.ts`, `types.ts`, `db.ts`, `index.ts`, `ipc.ts`, `container-runner.ts`) are the likely conflict points.
+
+Peer EA: `peer-ea.ts` implements inter-EA messaging over GChat DMs. Protocol prefix `[PEER:v1]` on messages. Peer groups live in `groups/peer-{email}/`.
+
+Ollama proxy: `npm run ollama-proxy` starts a bridge to a local Ollama instance. Set `ANTHROPIC_BASE_URL=http://host.docker.internal:4000` and `ANTHROPIC_API_KEY=ollama` in `.env` to route container agents through it.
+
+### Bifrost proxy (`scripts/ollama-proxy.ts`)
+
+Translates Anthropic `/v1/messages` → OpenAI `/v1/chat/completions`. Runs as user systemd unit `nanoclaw-proxy.service`. Env:
+
+- `BIFROST_URL` — upstream OpenAI-compatible endpoint
+- `BIFROST_MODEL` — model id to send upstream. Use `vllm/qwen3.7-plus` for Claude Code's tool-heavy payloads. `vllm/kimi-k2.6` returns 400 on the 32k-max-tokens + 64-tool requests Claude Code sends.
+- `BIFROST_API_KEY` — bearer token for upstream
+
+The handler normalizes `req.url` via `URL().pathname` because OneCLI gateway delivers requests in HTTP-forward-proxy absolute-form (`http://host/v1/messages`). Strict equality on `req.url` will 404 every agent request and surface as "model not found" in the Claude Agent SDK.
+
+### Linux/Docker connectivity gotchas
+
+Two host-environment issues can block `host.docker.internal:4000` from agent containers — both are needed in tandem:
+
+1. **Tailscale subnet route hijack.** If a tailnet peer advertises `172.17.0.0/16` or `172.18.0.0/16`, table 52 routes reply packets out `tailscale0` instead of `docker0`, container sees no SYN+ACK → timeout. Fix: `ip rule add to <docker-subnet> lookup main pref 1000` (pref < tailscale's 5270). Persisted via `nanoclaw-docker-routes.service`.
+2. **OneCLI gateway publishes to `127.0.0.1` only.** Containers on the default bridge can't reach `172.17.0.1:10254-10255`. Fix: `~/.onecli/docker-compose.override.yml` adds `172.17.0.1` port bindings + `extra_hosts: [host.docker.internal:host-gateway]` so OneCLI can resolve the host gateway when forwarding to the local proxy.
 
 ## Container Build Cache
 
