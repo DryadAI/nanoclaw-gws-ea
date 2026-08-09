@@ -9,6 +9,7 @@ import './gchat.js';
 // gmail
 
 // slack
+import './slack.js';
 
 // telegram
 import './telegram.js';
