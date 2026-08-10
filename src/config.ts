@@ -20,6 +20,8 @@ const envConfig = readEnvFile([
   'WHISPER_MODEL',
   'HOST_BROWSER_PORT',
   'TZ',
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_API_KEY',
 ]);
 
 export const ASSISTANT_NAME =
@@ -163,3 +165,9 @@ function resolveConfigTimezone(): string {
   return 'UTC';
 }
 export const TIMEZONE = resolveConfigTimezone();
+
+// Optional: custom Anthropic-compatible API endpoint (e.g. LiteLLM → Ollama)
+export const ANTHROPIC_BASE_URL =
+  process.env.ANTHROPIC_BASE_URL || envConfig.ANTHROPIC_BASE_URL;
+export const ANTHROPIC_API_KEY =
+  process.env.ANTHROPIC_API_KEY || envConfig.ANTHROPIC_API_KEY;

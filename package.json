@@ -22,7 +22,7 @@
     "auth:browser": "tsx src/workspace-auth.ts --browser",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ollama-proxy": "OLLAMA_URL=http://100.72.190.41:11434 OLLAMA_MODEL=qwen3:14b npx tsx scripts/ollama-proxy.ts"
+    "ollama-proxy": "BIFROST_URL=http://100.72.190.41:8080/v1 BIFROST_MODEL=vllm/kimi-k2.6 npx tsx scripts/ollama-proxy.ts"
   },
   "dependencies": {
     "@onecli-sh/sdk": "^0.2.0",

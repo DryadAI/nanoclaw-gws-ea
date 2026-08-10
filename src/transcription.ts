@@ -1,55 +1,48 @@
-import { execFile } from 'child_process';
 import fs from 'fs';
-import os from 'os';
-import path from 'path';
-import { promisify } from 'util';
-
-import { WHISPER_BIN, WHISPER_MODEL } from './config.js';
 import { logger } from './logger.js';
-
-const execFileAsync = promisify(execFile);
+import { ANTHROPIC_BASE_URL } from './config.js';
 
 /**
- * Transcribe an audio file using local whisper.cpp.
- * Converts to 16kHz mono WAV via ffmpeg, then runs whisper-cli.
- * Returns the transcript text, or null on failure.
+ * Transcribe an audio file using a remote OpenAI-compatible API.
+ * Uses the proxy configured in .env (ANTHROPIC_BASE_URL) which points to Bifrost.
  */
 export async function transcribe(audioPath: string): Promise<string | null> {
-  const wavPath = path.join(
-    os.tmpdir(),
-    `nanoclaw-${process.pid}-${Date.now()}.wav`,
-  );
-
   try {
-    await execFileAsync(
-      'ffmpeg',
-      ['-i', audioPath, '-ar', '16000', '-ac', '1', '-f', 'wav', '-y', wavPath],
-      { timeout: 30_000 },
-    );
+    const fileBuffer = fs.readFileSync(audioPath);
+    const formData = new FormData();
+    formData.append('file', new Blob([fileBuffer]), 'audio.wav');
+    formData.append('model', 'ollama/karanchopda333/whisper:latest');
 
-    const { stdout } = await execFileAsync(
-      WHISPER_BIN,
-      ['-m', WHISPER_MODEL, '-f', wavPath, '--no-timestamps', '-nt'],
-      { timeout: 60_000 },
-    );
+    // Use the same proxy base URL we use for LLM
+    const baseUrl =
+      ANTHROPIC_BASE_URL?.replace(/\/messages$/, '') ||
+      'http://host.docker.internal:4000/v1';
 
-    const text = stdout.trim();
+    const response = await fetch(`${baseUrl}/audio/transcriptions`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ollama',
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API error (${response.status}): ${errorText}`);
+    }
+
+    const result = (await response.json()) as { text: string };
+    const text = result.text.trim();
     if (!text) return null;
 
-    logger.info({ chars: text.length }, 'Transcribed audio message');
+    logger.info(
+      { chars: text.length },
+      'Transcribed audio message via remote API',
+    );
     return text;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.warn(
-      { audioPath, error: message },
-      'whisper.cpp transcription failed',
-    );
+    logger.warn({ audioPath, error: message }, 'Remote transcription failed');
     return null;
-  } finally {
-    try {
-      fs.unlinkSync(wavPath);
-    } catch {
-      /* ignore */
-    }
   }
 }
