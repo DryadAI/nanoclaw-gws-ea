@@ -19,3 +19,12 @@ headers, test one bounded inference request and the wrong-model denial, then
 switch the URL and credential together. Confirm old and new endpoint behavior
 and keep a rollback path. Gateway-wide authentication and port binding are
 separate changes tracked in DryadAI/dryad-tracker#445.
+# Local-only pilot update
+
+The proxy now permits only `ollama/qwen3.5:2b`, requires
+`BIFROST_VIRTUAL_KEY`, and refuses any HTTP bearer (including the legacy
+shared master key). The old
+`vllm/kimi-k2.6` launcher default is removed. An existing systemd unit that
+still sets the paid model will fail closed **after** a code deployment; update
+the unit and install a scoped VK before restarting it. This repository change
+does not modify the running unit or gateway configuration.

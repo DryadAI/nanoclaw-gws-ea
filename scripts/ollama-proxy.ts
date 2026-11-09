@@ -15,6 +15,7 @@
 
 import * as http from 'http';
 import { bifrostHeaders } from './bifrost-headers.js';
+import { resolveLocalProxyModel } from './local-model-policy.js';
 
 function resolveBase(): string {
   const raw = process.env.BIFROST_URL ?? process.env.OLLAMA_URL;
@@ -27,7 +28,7 @@ function resolveBase(): string {
 }
 
 const BIFROST_BASE  = resolveBase();
-const DEFAULT_MODEL = process.env.BIFROST_MODEL ?? process.env.OLLAMA_MODEL ?? 'qwen3:14b';
+const DEFAULT_MODEL = resolveLocalProxyModel(process.env);
 const PORT          = parseInt(process.env.PROXY_PORT ?? '4000', 10);
 const BIFROST_API_KEY = process.env.BIFROST_API_KEY ?? '';
 const BIFROST_VIRTUAL_KEY = process.env.BIFROST_VIRTUAL_KEY ?? '';
