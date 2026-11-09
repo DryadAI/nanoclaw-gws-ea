@@ -6,7 +6,7 @@
  * OpenAI-compatible backend — Bifrost, LM Studio, vLLM, etc.
  *
  * Usage:
- *   BIFROST_URL=http://100.72.190.41:8080/v1 BIFROST_MODEL=qwen3:14b npx tsx scripts/ollama-proxy.ts
+ *   BIFROST_URL=https://bifrost.madhatter.modlin.cloud/v1 BIFROST_MODEL=qwen3:14b npx tsx scripts/ollama-proxy.ts
  *
  * Legacy env vars still accepted:
  *   OLLAMA_URL  → treated as BIFROST_URL base (appends /v1 if missing)
@@ -14,6 +14,7 @@
  */
 
 import * as http from 'http';
+import { bifrostHeaders } from './bifrost-headers.js';
 
 function resolveBase(): string {
   const raw = process.env.BIFROST_URL ?? process.env.OLLAMA_URL;
@@ -22,13 +23,14 @@ function resolveBase(): string {
     // If caller supplied a bare Ollama URL without /v1, add it
     return trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`;
   }
-  return 'http://100.72.190.41:8080/v1';
+  return 'https://bifrost.madhatter.modlin.cloud/v1';
 }
 
 const BIFROST_BASE  = resolveBase();
 const DEFAULT_MODEL = process.env.BIFROST_MODEL ?? process.env.OLLAMA_MODEL ?? 'qwen3:14b';
 const PORT          = parseInt(process.env.PROXY_PORT ?? '4000', 10);
 const BIFROST_API_KEY = process.env.BIFROST_API_KEY ?? '';
+const BIFROST_VIRTUAL_KEY = process.env.BIFROST_VIRTUAL_KEY ?? '';
 
 // ── Type definitions ─────────────────────────────────────────────────────────
 
@@ -355,10 +357,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   try {
     const r = await fetch(`${BIFROST_BASE}/chat/completions`, {
       method:  'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(BIFROST_API_KEY ? { 'Authorization': `Bearer ${BIFROST_API_KEY}` } : {}),
-      },
+      headers: bifrostHeaders(BIFROST_API_KEY, BIFROST_VIRTUAL_KEY),
       body:    JSON.stringify(oaiReq),
     });
     if (!r.ok) {
